@@ -17,6 +17,8 @@ opensmile              # eGeMAPS v02 feature extraction
 # ── Emotion / arousal model ───────────────────────────────────────────────────
 torch
 transformers           # Wav2Vec2Processor + Wav2Vec2Model (audeering model)
+torchvision
+torchaudio
 
 # ── Data science ──────────────────────────────────────────────────────────────
 numpy
