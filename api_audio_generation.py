@@ -17,10 +17,10 @@ from pathlib import Path
 from typing import Optional
 
 import streamlit as st
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 
 # ── Load .env ──────────────────────────────────────────────────────────────────
-load_dotenv()
+# load_dotenv()
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
