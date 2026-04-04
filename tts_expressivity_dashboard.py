@@ -14,13 +14,20 @@ import time
 from hume import HumeClient
 load_dotenv()
 
-try:
-    HUME_API_KEY = st.secrets['HUME_API_KEY']
-except:
-    HUME_API_KEY = os.getenv('HUME_API_KEY')
+def get_secret(key):
+    # Try Streamlit secrets first
+    if hasattr(st, "secrets") and key in st.secrets:
+        return st.secrets[key]
+    # Fall back to environment / .env
+    val = os.getenv(key, "").strip()
+    return val if val else None
+# try:
+#     HUME_API_KEY = st.secrets['HUME_API_KEY']
+# except:
+#     HUME_API_KEY = os.getenv('HUME_API_KEY')
 
 from hume.expression_measurement.batch.types import Models, Prosody, InferenceBaseRequest
-
+HUME_API_KEY = get_secret('HUME_API_KEY')
 
 # Initialize the Hume Client
 if not HUME_API_KEY:
