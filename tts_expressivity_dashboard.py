@@ -9,6 +9,12 @@ from dotenv import load_dotenv
 import time
 
 
+# ── Page config ────────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="TTS Expressivity Lab",
+    page_icon="🎙️",
+    layout="wide",
+)
 
 
 from hume import HumeClient
@@ -38,12 +44,7 @@ client = HumeClient(api_key=HUME_API_KEY)
 
 
 
-# ── Page config ────────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="TTS Expressivity Lab",
-    page_icon="🎙️",
-    layout="wide",
-)
+
 
 # ── Styling ────────────────────────────────────────────────────────────────────
 st.markdown("""
