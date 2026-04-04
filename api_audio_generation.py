@@ -22,11 +22,12 @@ from dotenv import load_dotenv
 # ── Load .env ──────────────────────────────────────────────────────────────────
 
 def get_secret(key):
-    try:
+    # Try Streamlit secrets first
+    if hasattr(st, "secrets") and key in st.secrets:
         return st.secrets[key]
-    except:
-        return os.getenv(key)
-
+    # Fall back to environment / .env
+    val = os.getenv(key, "").strip()
+    return val if val else None
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -505,8 +506,8 @@ def render_google_gemini(prompt: str):
 
 def render_azure(prompt: str):
     """Microsoft Azure Speech — SSML emotion styles."""
-    key = get_env("AZURE_SPEECH_KEY")
-    region = get_env("AZURE_SPEECH_REGION") or "westus"
+    key = get_secret("AZURE_SPEECH_KEY")
+    region = get_secret("AZURE_SPEECH_REGION") or "westus"
 
     VOICES = {
         "Jenny (Female, en-US)":    ("en-US-JennyNeural",    "en-US"),
@@ -981,12 +982,12 @@ def render_inworld(prompt: str):
     c1, c2 = st.columns(2)
     with c1:
         workspace_id = st.text_input("Workspace ID",
-                                      value=get_env("INWORLD_WORKSPACE_ID") or "",
+                                      value=get_secret("INWORLD_WORKSPACE_ID") or "",
                                       key="iw_workspace",
                                       placeholder="workspaces/my-workspace")
     with c2:
         character_name = st.text_input("Character name",
-                                        value=get_env("INWORLD_CHARACTER") or "",
+                                        value=get_secret("INWORLD_CHARACTER") or "",
                                         key="iw_character",
                                         placeholder="characters/my-character")
 
