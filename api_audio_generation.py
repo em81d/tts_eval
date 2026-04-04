@@ -20,8 +20,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 # ── Load .env ──────────────────────────────────────────────────────────────────
-from pathlib import Path
-load_dotenv(Path(__file__).parent / ".env")
+
 def get_secret(key):
     try:
         return st.secrets[key]
