@@ -1,0 +1,32 @@
+# ── Core web app ──────────────────────────────────────────────────────────────
+streamlit
+
+# ── Environment / config ──────────────────────────────────────────────────────
+python-dotenv
+
+# ── HTTP requests (used by most TTS providers) ────────────────────────────────
+requests
+
+# ── Audio processing ──────────────────────────────────────────────────────────
+pydub                  # MP3 → WAV fallback conversion (api_audio_generation.py)
+soundfile              # WAV reading for arousal model (tts_expressivity_dashboard.py)
+
+# ── Acoustic feature extraction ───────────────────────────────────────────────
+opensmile              # eGeMAPS v02 feature extraction
+
+# ── Emotion / arousal model ───────────────────────────────────────────────────
+torch
+transformers           # Wav2Vec2Processor + Wav2Vec2Model (audeering model)
+
+# ── Data science ──────────────────────────────────────────────────────────────
+numpy
+pandas
+
+# ── Visualization ─────────────────────────────────────────────────────────────
+plotly
+
+# ── Hume AI (TTS generation + expression measurement) ────────────────────────
+hume
+
+# ── Neuphonic TTS ─────────────────────────────────────────────────────────────
+pyneuphonic
