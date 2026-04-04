@@ -17,10 +17,16 @@ from pathlib import Path
 from typing import Optional
 
 import streamlit as st
-# from dotenv import load_dotenv
+from dotenv import load_dotenv
 
 # ── Load .env ──────────────────────────────────────────────────────────────────
 # load_dotenv()
+def get_secret(key):
+    try:
+        return st.secrets[key]
+    except:
+        return os.getenv(key)
+
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -228,7 +234,7 @@ st.markdown("---")
 
 def render_elevenlabs(prompt: str):
     """ElevenLabs — audio tags for emotion, voice selector."""
-    key = get_env("ELEVENLABS_API_KEY")
+    key = get_secret('ELEVENLABS_API_KEY')
 
     VOICES = {
         "Rachel (Female)":   "21m00Tcm4TlvDq8ikWAM",
@@ -305,7 +311,7 @@ def render_elevenlabs(prompt: str):
 
 def render_hume(prompt: str):
     """Hume Octave TTS — acting instructions (emotion/style description)."""
-    key = get_env("HUME_API_KEY")
+    key = get_secret('HUME_API_KEY')
 
     ACTING_PRESETS = [
         "None",
@@ -408,7 +414,7 @@ def render_hume(prompt: str):
 
 def render_google_gemini(prompt: str):
     """Google Gemini TTS — style prompt + voice selection."""
-    key = get_env("GOOGLE_API_KEY")
+    key = get_secret('GOOGLE_API_KEY')
 
     VOICES = [
         "Aoede", "Charon", "Fenrir", "Kore", "Leda", "Orus",
@@ -613,7 +619,7 @@ def render_azure(prompt: str):
 
 def render_cartesia(prompt: str):
     """Cartesia Sonic 3 — emotion & speed controls."""
-    key = get_env("CARTESIA_API_KEY")
+    key = get_secret('CARTESIA_API_KEY')
 
     # Curated default voices from Cartesia library
     VOICES = {
@@ -701,7 +707,7 @@ def render_cartesia(prompt: str):
 
 def render_deepgram(prompt: str):
     """Deepgram Aura — voice selector (no explicit emotion params in REST API)."""
-    key = get_env("DEEPGRAM_API_KEY")
+    key = get_secret('DEEPGRAM_API_KEY')
 
     VOICES = [
         "aura-2-thalia-en", "aura-2-andromeda-en", "aura-2-helena-en",
@@ -779,7 +785,7 @@ def render_deepgram(prompt: str):
 
 def render_fish_audio(prompt: str):
     """Fish Audio — emotion tags (inline [tag] syntax), voice selector."""
-    key = get_env("FISH_AUDIO_API_KEY")
+    key = get_secret('FISH_AUDIO_API_KEY')
 
     # Curated well-known public voices on Fish Audio
     VOICES = {
@@ -870,7 +876,7 @@ def render_fish_audio(prompt: str):
 
 def render_neuphonic(prompt: str):
     """Neuphonic — speed, pitch, language controls."""
-    key = get_env("NEUPHONIC_API_KEY")
+    key = get_secret('NEUPHONIC_API_KEY')
 
     LANGUAGES = {
         "English (US)": "en",
@@ -968,7 +974,7 @@ def render_neuphonic(prompt: str):
 
 def render_inworld(prompt: str):
     """Inworld AI TTS — character/voice selection."""
-    key = get_env("INWORLD_API_KEY")
+    key = get_secret('INWORLD_API_KEY')
 
     st.info("Inworld TTS uses a character-based voice model. Provide your Inworld workspace ID and character name in the .env file, or enter them below.")
 
@@ -1040,7 +1046,7 @@ def render_inworld(prompt: str):
 
 def render_async_ai(prompt: str):
     """Async AI TTS — voice and style controls."""
-    key = get_env("ASYNC_API_KEY")
+    key = get_secret('ASYNC_API_KEY')
 
     MODELS = {
         "Async Flash v1 (fast)": "async_flash_v1.0",

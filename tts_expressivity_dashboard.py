@@ -13,7 +13,11 @@ import time
 
 from hume import HumeClient
 load_dotenv()
-HUME_API_KEY = os.getenv("HUME_API_KEY")
+
+try:
+    HUME_API_KEY = st.secrets['HUME_API_KEY']
+except:
+    HUME_API_KEY = os.getenv('HUME_API_KEY')
 
 from hume.expression_measurement.batch.types import Models, Prosody, InferenceBaseRequest
 
