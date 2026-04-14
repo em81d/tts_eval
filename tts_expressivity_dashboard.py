@@ -45,22 +45,62 @@ client = HumeClient(api_key=HUME_API_KEY)
 # hume_emotion: exact emotion label string as returned by Hume API
 # ══════════════════════════════════════════════════════════════════════════════
 EMOTION_CONFIG = {
+    #I want description to not do anything but I'm not deleting it until I know if it is used anywhere
     "Anger": {
         "valence_direction": "negative",
         "hume_emotion": "Anger",
         "description": "High arousal, negative valence. Anger should sound forceful and tense.",
     },
-    # Future emotions can be added here, e.g.:
-    # "Joy": {
-    #     "valence_direction": "positive",
-    #     "hume_emotion": "Joy",
-    #     "description": "High arousal, positive valence.",
-    # },
-    # "Sadness": {
-    #     "valence_direction": "negative",
-    #     "hume_emotion": "Sadness",
-    #     "description": "Low arousal, negative valence.",
-    # },
+    "Excitement": {
+        "valence_direction": "positive",
+        "hume_emotion": "Excitement",
+        "description": "High arousal, positive valence.",
+    },
+    "Interest": {
+        "valence_direction": "positive",
+        "hume_emotion": "Interest",
+        "description": "Low arousal, positive valence.",
+    },
+    "Sympathy": {
+        "valence_direction": "positive", #I don't know
+        "hume_emotion": "Sympathy",
+        "description": "medium?? arousal, medium?? valence.",
+    },
+    "Surprise": {
+        "valence_direction": "positive",
+        "hume_emotion": "Surprise (positive)",
+        "description": "High arousal, positive valence.",
+    },
+    "Contempt": {
+        "valence_direction": "negative",
+        "hume_emotion": "Contempt",
+        "description": "High arousal, negative valence.",
+    },
+    "Disgust": {
+        "valence_direction": "negative",
+        "hume_emotion": "Disgust",
+        "description": "medium? arousal, negative valence.",
+    },
+    "Distress": {
+        "valence_direction": "negative", 
+        "hume_emotion": "Distress",
+        "description": "high arousal, negative valence.",
+    },
+    "Fear": {
+        "valence_direction": "negative",
+        "hume_emotion": "Fear",
+        "description": "any? arousal, negative valence.",
+    },
+    "Sadness": {
+        "valence_direction": "negative",
+        "hume_emotion": "Sadness",
+        "description": "low arousal, negative valence.",
+    },
+    "Neutral": {
+        "valence_direction": "zero", #should be as neutral as possible
+        "hume_emotion": "Neutral",
+        "description": "low arousal, neutral valence.",
+    },
 }
 
 AVAILABLE_EMOTIONS = list(EMOTION_CONFIG.keys())
@@ -290,7 +330,7 @@ def compute_expressivity(feats):
         "Pitch Variability (F0 std)": feats.get("F0semitoneFrom27.5Hz_sma3nz_stddevNorm", np.nan),
         "Loudness Variability":       feats.get("loudness_sma3_stddevNorm", np.nan),
         "Shimmer (local)":            feats.get("shimmerLocaldB_sma3nz_amean", np.nan),
-        "HNR (voice quality)":        feats.get("HNRdBACF_sma3nz_amean", np.nan),
+        # "HNR (voice quality)":        feats.get("HNRdBACF_sma3nz_amean", np.nan),
     }
     return components
 
@@ -380,10 +420,10 @@ def run_hume_analysis(ready_files, results):
 # live on the same scale and no single component dominates by magnitude.
 # ══════════════════════════════════════════════════════════════════════════════
 
-ACOUSTIC_WEIGHT = 0.40
-AROUSAL_WEIGHT  = 0.30
+ACOUSTIC_WEIGHT = 0.42
+AROUSAL_WEIGHT  = 0.32
 VALENCE_WEIGHT  = 0.10
-HUME_WEIGHT     = 0.20
+HUME_WEIGHT     = 0.16
 
 
 def compute_composite_score(
@@ -408,7 +448,7 @@ def compute_composite_score(
     # ── 1. Acoustic sub-score (40%) ──────────────────────────────────────────
     # Invert HNR: breathy/dynamic voices are more expressive.
     df_norm = df_comp.copy()
-    df_norm["HNR (voice quality)"] = -df_norm["HNR (voice quality)"]
+    # df_norm["HNR (voice quality)"] = -df_norm["HNR (voice quality)"]
     df_zscored = (df_norm - df_norm.mean()) / (df_norm.std() + 1e-8)
     acoustic_score = df_zscored.mean(axis=1)  # average across features
     sub_scores["acoustic"] = acoustic_score
@@ -566,7 +606,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Models to compare")
 
-    num_models = st.number_input("How many TTS models?", min_value=2, max_value=6, value=3, step=1)
+    num_models = st.number_input("How many TTS models?", min_value=2, max_value=20, value=3, step=1)
 
     model_names = []
     uploaded_files = []
@@ -708,7 +748,7 @@ winner = composite.index[0]
 
 # z-scored acoustic matrix for radar/feature charts
 df_norm = df_comp.copy()
-df_norm["HNR (voice quality)"] = -df_norm["HNR (voice quality)"]
+# df_norm["HNR (voice quality)"] = -df_norm["HNR (voice quality)"]
 df_zscored = (df_norm - df_norm.mean()) / (df_norm.std() + 1e-8)
 
 
