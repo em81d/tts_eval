@@ -1006,23 +1006,34 @@ def render_rime(prompt: str, iid: int = 0, phase: str = ""):
     key = get_secret("RIME_API_KEY")
     store_key = f"Rime_{iid}"
     _phase = f"_{phase}" if phase.strip() else ""
-
-    MODELS = {"Mistv2 (fast, business)": "mistv2", "Arcana (expressive)": "arcana", "Mist (legacy)": "mist"}
-    VOICES = ["river", "cove", "luna", "joy", "juan", "grace", "maya", "alex",
-              "sam", "morgan", "casey", "riley", "quinn", "sage", "sky"]
+ 
+    MODELS = {
+        "Arcana (expressive)": "arcana",
+        "Mist v3 (fast)":      "mistv3",
+        "Mist v2 (business)":  "mistv2",
+    }
+    # Voices are model-specific — sourced live from https://users.rime.ai/data/voices/voice_details.json
+    MODEL_VOICES = {
+        "arcana": ["albion", "arcade", "astra", "atrium", "bond", "celeste",
+                   "cupola", "eliphas", "estelle", "eucalyptus", "fern",
+                   "lintel", "luna", "lyra", "marlu"],
+        "mistv3": ["astra", "cove", "estelle", "lagoon", "luna", "mari"],
+        "mistv2": ["astra", "cove", "eucalyptus", "lagoon", "mari", "marlu"],
+    }
     LANGUAGES = {"English": "eng", "Spanish": "spa", "French": "fra", "German": "deu", "Portuguese": "por"}
-
+ 
     c1, c2, c3 = st.columns(3)
     with c1:
         model_label = st.selectbox("Model", list(MODELS.keys()), key=f"rime_model_{iid}")
+    model_id = MODELS[model_label]
     with c2:
-        voice = st.selectbox("Voice", VOICES, key=f"rime_voice_{iid}")
+        voice = st.selectbox("Voice", MODEL_VOICES[model_id], key=f"rime_voice_{iid}")
     with c3:
         lang_label = st.selectbox("Language", list(LANGUAGES.keys()), key=f"rime_lang_{iid}")
-
+ 
     if not key:
         st.markdown(missing_key_html("RIME_API_KEY"), unsafe_allow_html=True)
-
+ 
     col_gen, col_dl = st.columns([1, 1])
     with col_gen:
         gen = st.button("▶ Generate", key=f"rime_gen_{iid}")
@@ -1030,7 +1041,7 @@ def render_rime(prompt: str, iid: int = 0, phase: str = ""):
         dl_placeholder = st.empty()
     status = st.empty()
     audio_placeholder = st.empty()
-
+ 
     if gen:
         if not key:
             status.markdown('<span class="status-err">❌ No API key</span>', unsafe_allow_html=True); return
@@ -1038,7 +1049,7 @@ def render_rime(prompt: str, iid: int = 0, phase: str = ""):
             status.markdown('<span class="status-warn">⚠️ Prompt is empty</span>', unsafe_allow_html=True); return
         try:
             import requests
-            body = {"text": prompt, "speaker": voice, "modelId": MODELS[model_label],
+            body = {"text": prompt, "speaker": voice, "modelId": model_id,
                     "lang": LANGUAGES[lang_label], "audioFormat": "wav"}
             with st.spinner("Generating…"):
                 resp = requests.post("https://users.rime.ai/v1/rime-tts", json=body,
@@ -1053,12 +1064,12 @@ def render_rime(prompt: str, iid: int = 0, phase: str = ""):
             status.markdown('<span class="status-ok">✓ Generated</span>', unsafe_allow_html=True)
         except Exception as e:
             status.markdown(f'<span class="status-err">❌ {e}</span>', unsafe_allow_html=True); traceback.print_exc()
-
+ 
     if store_key in st.session_state.audio_store:
         wav = st.session_state.audio_store[store_key]
         audio_placeholder.audio(wav, format="audio/wav")
         dl_placeholder.download_button("⬇ Download .wav", wav, f"rime{_phase}_{iid}.wav", "audio/wav", key=f"rime_dl_{iid}")
-
+ 
 
 def render_minimax(prompt: str, iid: int = 0, phase: str = ""):
     key  = get_secret("MINIMAX_API_KEY")
@@ -1166,7 +1177,7 @@ def render_smallest_ai(prompt: str, iid: int = 0, phase: str = ""):
             body = {"text": prompt, "voice_id": voice, "model": MODELS[model_label],
                     "output_format": "wav", "speed": speed, "sample_rate": 24000}
             with st.spinner("Generating…"):
-                resp = requests.post("https://waves-api.smallest.ai/api/v1/tts/get_speech", json=body,
+                resp = requests.post("https://waves-api.smallest.ai/v1/tts/get_speech", json=body,
                                       headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                                       timeout=30)
             if resp.status_code != 200:
