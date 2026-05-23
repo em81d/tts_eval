@@ -1177,7 +1177,7 @@ def render_smallest_ai(prompt: str, iid: int = 0, phase: str = ""):
             body = {"text": prompt, "voice_id": voice, "model": MODELS[model_label],
                     "output_format": "wav", "speed": speed, "sample_rate": 24000}
             with st.spinner("Generating…"):
-                resp = requests.post("https://waves-api.smallest.ai/v1/tts/get_speech", json=body,
+                resp = requests.post("https://api.smallest.ai/v1/tts/get_speech", json=body,
                                       headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                                       timeout=30)
             if resp.status_code != 200:
