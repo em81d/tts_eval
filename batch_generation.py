@@ -1145,20 +1145,24 @@ def render_smallest_ai(prompt: str, iid: int = 0, phase: str = ""):
     key = get_secret("SMALLEST_AI_API_KEY")
     store_key = f"Smallest AI_{iid}"
     _phase = f"_{phase}" if phase.strip() else ""
-
-    VOICES = ["emily", "aria", "jessica", "michael", "ethan", "luna", "zoe", "liam", "noah", "ava"]
-    MODELS = {"Lightning v3 (recommended)": "lightning-v3", "Lightning v2": "lightning-v2"}
-
+ 
+    VOICES = ["emily", "aria", "jessica", "michael", "ethan", "luna", "zoe", "liam", "noah", "ava", "arnav", "magnus"]
+    # Model name is part of the URL path, not the request body
+    MODELS = {
+        "Lightning v3 (recommended)": "lightning-v3",
+        "Lightning (stable)":         "lightning",
+    }
+ 
     c1, c2 = st.columns(2)
     with c1:
         voice = st.selectbox("Voice", VOICES, key=f"sai_voice_{iid}")
     with c2:
         model_label = st.selectbox("Model", list(MODELS.keys()), key=f"sai_model_{iid}")
     speed = st.slider("Speed", 0.5, 2.0, 1.0, 0.05, key=f"sai_speed_{iid}")
-
+ 
     if not key:
         st.markdown(missing_key_html("SMALLEST_AI_API_KEY"), unsafe_allow_html=True)
-
+ 
     col_gen, col_dl = st.columns([1, 1])
     with col_gen:
         gen = st.button("▶ Generate", key=f"sai_gen_{iid}")
@@ -1166,7 +1170,7 @@ def render_smallest_ai(prompt: str, iid: int = 0, phase: str = ""):
         dl_placeholder = st.empty()
     status = st.empty()
     audio_placeholder = st.empty()
-
+ 
     if gen:
         if not key:
             status.markdown('<span class="status-err">❌ No API key</span>', unsafe_allow_html=True); return
@@ -1174,10 +1178,17 @@ def render_smallest_ai(prompt: str, iid: int = 0, phase: str = ""):
             status.markdown('<span class="status-warn">⚠️ Prompt is empty</span>', unsafe_allow_html=True); return
         try:
             import requests
-            body = {"text": prompt, "voice_id": voice, "model": MODELS[model_label],
-                    "output_format": "wav", "speed": speed, "sample_rate": 24000}
+            model_slug = MODELS[model_label]
+            url = f"https://waves-api.smallest.ai/api/v1/{model_slug}/get_speech"
+            body = {
+                "text":           prompt,
+                "voice_id":       voice,
+                "sample_rate":    24000,
+                "speed":          speed,
+                "add_wav_header": True,
+            }
             with st.spinner("Generating…"):
-                resp = requests.post("https://api.smallest.ai/v1/tts/get_speech", json=body,
+                resp = requests.post(url, json=body,
                                       headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                                       timeout=30)
             if resp.status_code != 200:
@@ -1186,12 +1197,12 @@ def render_smallest_ai(prompt: str, iid: int = 0, phase: str = ""):
             status.markdown('<span class="status-ok">✓ Generated</span>', unsafe_allow_html=True)
         except Exception as e:
             status.markdown(f'<span class="status-err">❌ {e}</span>', unsafe_allow_html=True); traceback.print_exc()
-
+ 
     if store_key in st.session_state.audio_store:
         wav = st.session_state.audio_store[store_key]
         audio_placeholder.audio(wav, format="audio/wav")
         dl_placeholder.download_button("⬇ Download .wav", wav, f"smallest_ai{_phase}_{iid}.wav", "audio/wav", key=f"sai_dl_{iid}")
-
+ 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Provider registry
