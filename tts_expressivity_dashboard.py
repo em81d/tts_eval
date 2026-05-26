@@ -606,16 +606,8 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Models to compare")
 
-    num_models = st.number_input("How many TTS models?", min_value=2, max_value=20, value=3, step=1)
-
-    model_names = []
-    uploaded_files = []
-    for i in range(num_models):
-        st.markdown(f"**Model {i+1}**")
-        name = st.text_input(f"Name", value=f"TTS Model {i+1}", key=f"name_{i}", label_visibility="collapsed")
-        f = st.file_uploader(f"Upload WAV", type=["wav", "mp3", "flac"], key=f"file_{i}", label_visibility="collapsed")
-        model_names.append(name)
-        uploaded_files.append(f)
+    st.markdown("### Upload Audio Files")
+    uploaded_files = st.file_uploader("Upload WAV files (up to 45)", type=["wav", "mp3", "flac"], accept_multiple_files=True, key="folder_upload")
 
     st.markdown("---")
     use_arousal = st.toggle("🧠 Include Arousal/Valence Model", value=True,
@@ -655,34 +647,39 @@ st.markdown("# TTS Expressivity Analysis")
 st.markdown(f"*Target emotion: **{selected_emotion}** · Purely acoustic/prosodic — no text or semantics used*")
 st.markdown("---")
 
-ready_files = [(model_names[i], uploaded_files[i]) for i in range(num_models) if uploaded_files[i] is not None]
+# Prepare files for analysis
+ready_files = []
+for uploaded_file in uploaded_files:
+    # Use the filename (without extension) as the model name
+    name = os.path.splitext(uploaded_file.name)[0]
+    ready_files.append((name, uploaded_file))
 
-if not analyze:
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("""<div class="metric-card">
-            <h4>What this measures</h4>
-            <div style="font-size:0.85rem;color:#a0a0cc;margin-top:0.5rem">
-            Pitch range & variability<br>Loudness dynamics<br>Voice quality (shimmer, HNR)<br>
-            Arousal & valence scores<br>Hume emotion detection
-            </div></div>""", unsafe_allow_html=True)
-    with col2:
-        st.markdown("""<div class="metric-card">
-            <h4>Score breakdown</h4>
-            <div style="font-size:0.85rem;color:#a0a0cc;margin-top:0.5rem">
-            40% Acoustic features<br>30% Arousal (energy/activation)<br>
-            15% Valence (emotion polarity)<br>15% Hume emotion detection
-            </div></div>""", unsafe_allow_html=True)
-    with col3:
-        st.markdown("""<div class="metric-card">
-            <h4>How to use</h4>
-            <div style="font-size:0.85rem;color:#a0a0cc;margin-top:0.5rem">
-            1. Pick your target emotion<br>2. Upload one WAV per TTS model<br>3. Click ▶ Run Analysis
-            </div></div>""", unsafe_allow_html=True)
+    if not analyze:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("""<div class="metric-card">
+                <h4>What this measures</h4>
+                <div style="font-size:0.85rem;color:#a0a0cc;margin-top:0.5rem">
+                Pitch range & variability<br>Loudness dynamics<br>Voice quality (shimmer, HNR)<br>
+                Arousal & valence scores<br>Hume emotion detection
+                </div></div>""", unsafe_allow_html=True)
+        with col2:
+            st.markdown("""<div class="metric-card">
+                <h4>Score breakdown</h4>
+                <div style="font-size:0.85rem;color:#a0a0cc;margin-top:0.5rem">
+                40% Acoustic features<br>30% Arousal (energy/activation)<br>
+                15% Valence (emotion polarity)<br>15% Hume emotion detection
+                </div></div>""", unsafe_allow_html=True)
+        with col3:
+            st.markdown("""<div class="metric-card">
+                <h4>How to use</h4>
+                <div style="font-size:0.85rem;color:#a0a0cc;margin-top:0.5rem">
+                1. Pick your target emotion<br>2. Upload WAV files from a folder<br>3. Click ▶ Run Analysis
+                </div></div>""", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown('<div class="info-box">👈 Configure your target emotion and models in the sidebar, then click <strong>Run Analysis</strong>.</div>', unsafe_allow_html=True)
-    st.stop()
+        st.markdown("---")
+        st.markdown("<div class=\"info-box\">👈 Configure your target emotion and upload models in the sidebar, then click <strong>Run Analysis</strong>.</div>", unsafe_allow_html=True)
+        st.stop()
 
 if len(ready_files) < 2:
     st.warning("Please upload at least 2 audio files to compare.")
