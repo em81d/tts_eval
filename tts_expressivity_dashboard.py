@@ -53,6 +53,8 @@ EMOTION_CONFIG = {
     },
     "Excitement": {
         "valence_direction": "positive",
+
+        
         "hume_emotion": "Excitement",
         "description": "High arousal, positive valence.",
     },
@@ -604,12 +606,28 @@ with st.sidebar:
                 unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("### Models to compare")
-
     st.markdown("### Upload Audio Files")
     uploaded_files = st.file_uploader("Upload WAV files (up to 45)", type=["wav", "mp3", "flac"], accept_multiple_files=True, key="folder_upload")
 
+    model_names = [os.path.splitext(f.name)[0] for f in uploaded_files if f is not None]
+
+    if uploaded_files:
+        st.markdown("#### Customize Colors")
+        # Initialize custom_colors in session state if not already present
+        if "custom_colors" not in st.session_state:
+            st.session_state.custom_colors = {}
+
+        for i, name in enumerate(model_names):
+            # Get current color from ACCENT_COLORS or session state
+            default_color = ACCENT_COLORS[i % len(ACCENT_COLORS)]
+            current_color = st.session_state.custom_colors.get(name, default_color)
+
+            chosen_color = st.color_picker(f"Color for {name}", value=current_color, key=f"color_{name}")
+            if chosen_color != current_color:
+                st.session_state.custom_colors[name] = chosen_color
+
     st.markdown("---")
+
     use_arousal = st.toggle("🧠 Include Arousal/Valence Model", value=True,
                             help="Adds audeering wav2vec2 arousal/valence. Slower but richer.")
     use_hume = st.toggle("🦨 Include Hume Analysis", value=True,
@@ -723,8 +741,10 @@ if use_hume:
         hume_raw, hume_means, hume_predictions = run_hume_analysis(ready_files, results)
         hume_status.update(label="Hume analysis complete!", state="complete")
 
-model_list = list(results.keys())
-colors = {name: ACCENT_COLORS[i % len(ACCENT_COLORS)] for i, name in enumerate(model_list)}
+    model_list = list(results.keys())
+    # Use custom colors from session state if available, otherwise use default ACCENT_COLORS
+    colors = {name: st.session_state.custom_colors.get(name, ACCENT_COLORS[i % len(ACCENT_COLORS)])
+              for i, name in enumerate(model_list)}
 
 # ── eGeMAPS matrix ─────────────────────────────────────────────────────────────
 comp_matrix = {name: results[name]["components"] for name in model_list}
