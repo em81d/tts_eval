@@ -6,7 +6,6 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import tempfile, os, io
 from dotenv import load_dotenv
-import time
 
 
 # ── Page config ────────────────────────────────────────────────────────────────
@@ -17,32 +16,14 @@ st.set_page_config(
 )
 
 
-from hume import HumeClient
 load_dotenv()
-
-def get_secret(key):
-    try:
-        return st.secrets[key]
-    except (KeyError, FileNotFoundError):
-        pass
-    return os.getenv(key)
-
-from hume.expression_measurement.batch.types import Models, Prosody, InferenceBaseRequest
-HUME_API_KEY = get_secret('HUME_API_KEY')
-
-if not HUME_API_KEY:
-    st.error("Missing HUME_API_KEY in .env file!")
-    st.stop()
-
-client = HumeClient(api_key=HUME_API_KEY)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # EMOTION CONFIGURATION
-# Maps emotion label → scoring parameters for valence and Hume.
+# Maps emotion label → scoring parameters for valence.
 # valence_direction: "negative" → lower valence scores better
 #                   "positive" → higher valence scores better
-# hume_emotion: exact emotion label string as returned by Hume API
 # ══════════════════════════════════════════════════════════════════════════════
 EMOTION_CONFIG = {
     #I want description to not do anything but I'm not deleting it until I know if it is used anywhere
@@ -337,86 +318,14 @@ def compute_expressivity(feats):
     return components
 
 
-def run_hume_analysis(ready_files, results):
-    """
-    Runs Hume prosody analysis for all models.
-    Returns dict: name → list of per-segment emotion dicts,
-                  and name → averaged emotion scores dict.
-    """
-    hume_raw = {}      # name → list of per-segment dicts
-    hume_means = {}    # name → {emotion: mean_score}
-    hume_predictions = {}  # name → raw predictions object (for tab4 display)
-
-    progress_text = st.empty()
-
-    for name, file_obj in ready_files:
-        audio_bytes = results[name]["audio"]
-
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp.write(audio_bytes)
-            tmp_path = tmp.name
-
-        try:
-            progress_text.markdown(f'<div class="info-box">⏳ Submitting <strong>{name}</strong> to Hume...</div>', unsafe_allow_html=True)
-
-            configs = InferenceBaseRequest(
-                models=Models(prosody=Prosody(granularity="utterance"))
-            )
-            with open(tmp_path, "rb") as f:
-                job_id = client.expression_measurement.batch.start_inference_job_from_local_file(
-                    file=[f],
-                    json=configs
-                )
-
-            while True:
-                job_status = client.expression_measurement.batch.get_job_details(id=job_id)
-                current_state = job_status.state.status
-                if current_state == "COMPLETED":
-                    break
-                elif current_state == "FAILED":
-                    st.warning(f"Hume job failed for {name}.")
-                    break
-                else:
-                    time.sleep(3)
-
-            predictions = client.expression_measurement.batch.get_job_predictions(job_id)
-            hume_predictions[name] = predictions
-
-            all_segment_emotions = []
-            for result in predictions:
-                group_predictions = result.results.predictions[0].models.prosody.grouped_predictions
-                for group in group_predictions:
-                    for prediction in group.predictions:
-                        seg_dict = {e.name: e.score for e in prediction.emotions}
-                        all_segment_emotions.append(seg_dict)
-
-            hume_raw[name] = all_segment_emotions
-            if all_segment_emotions:
-                df_all = pd.DataFrame(all_segment_emotions)
-                hume_means[name] = df_all.mean().to_dict()
-            else:
-                hume_means[name] = {}
-
-        except Exception as e:
-            st.warning(f"Hume failed for {name}: {e}")
-            hume_raw[name] = []
-            hume_means[name] = {}
-        finally:
-            os.unlink(tmp_path)
-
-    progress_text.empty()
-    return hume_raw, hume_means, hume_predictions
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # COMPOSITE SCORE FUNCTION
 # This is the central scoring function. Edit weights and logic here.
 #
 # Weights:
-#   ACOUSTIC_WEIGHT  = 0.40  (eGeMAPS pitch, loudness, shimmer, HNR)
-#   AROUSAL_WEIGHT   = 0.30  (wav2vec2 arousal dimension)
-#   VALENCE_WEIGHT   = 0.15  (wav2vec2 valence, direction-aware per emotion)
-#   HUME_WEIGHT      = 0.15  (Hume target-emotion detection score)
+#   ACOUSTIC_WEIGHT  = 0.42  (eGeMAPS pitch, loudness, shimmer, HNR)
+#   AROUSAL_WEIGHT   = 0.32  (wav2vec2 arousal dimension)
+#   VALENCE_WEIGHT   = 0.10  (wav2vec2 valence, direction-aware per emotion)
 #
 # All sub-scores are z-scored across models before weighting so they
 # live on the same scale and no single component dominates by magnitude.
@@ -425,17 +334,14 @@ def run_hume_analysis(ready_files, results):
 ACOUSTIC_WEIGHT = 0.42
 AROUSAL_WEIGHT  = 0.32
 VALENCE_WEIGHT  = 0.10
-HUME_WEIGHT     = 0.16
 
 
 def compute_composite_score(
     model_list,
     df_comp,          # pd.DataFrame: models × acoustic components
     results,          # dict: name → {arousal: {arousal, valence, dominance}, ...}
-    hume_means,       # dict: name → {emotion_name: mean_score}
     emotion_config,   # dict: from EMOTION_CONFIG[selected_emotion]
     use_arousal=True,
-    use_hume=True,
 ):
     """
     Computes the composite expressivity score for each model.
@@ -486,73 +392,13 @@ def compute_composite_score(
         valence_z = pd.Series({name: 0.0 for name in model_list})
     sub_scores["valence"] = valence_z
 
-    # ── 4. Hume sub-score (15%) ──────────────────────────────────────────────
-    # Score = how strongly Hume detected the target emotion (mean score across utterances).
-    # We additionally compute a rank bonus: if the target emotion is in Hume's top-3
-    # emotions for a model, we add a small bonus (0.25 z-unit equivalent) to reward
-    # models where the emotion is clearly the dominant affect — not just detectable.
-    if use_hume and hume_means:
-        target_emotion = emotion_config.get("hume_emotion", "")
-
-        # ── Rank-weighted mean (Option 1) ────────────────────────────────────
-        # For each model, score = target_emotion_score / rank_position (1-indexed).
-        # This rewards both high raw confidence AND high salience (low rank index)
-        # simultaneously, with a smooth gradient rather than discrete bonus tiers.
-        # The result is then normalized across models so it sums to 1 before
-        # z-scoring, keeping the scale stable regardless of how many emotions
-        # Hume returns.
-        #
-        # Formula per model:
-        #   raw_weighted = score(target) / (rank(target) + 1)
-        #   normalized   = raw_weighted / Σ(score_i / (rank_i + 1))  for all emotions
-        #
-        # Using (rank + 1) rather than rank avoids division-by-zero for rank=0
-        # and smoothly compresses the weight of lower-ranked emotions.
-        # ─────────────────────────────────────────────────────────────────────
-        hume_raw_scores = {}
-        for name in model_list:
-            emotions = hume_means.get(name, {})
-            if not emotions:
-                hume_raw_scores[name] = 0.0
-                continue
-
-            sorted_emotions = sorted(emotions.items(), key=lambda x: x[1], reverse=True)
-
-            # Build the full rank-weighted sum across ALL emotions (normalization denominator)
-            total_rank_weighted = sum(
-                score / (rank + 1)
-                for rank, (_, score) in enumerate(sorted_emotions)
-            )
-
-            # Find rank of the target emotion
-            target_rank = next(
-                (i for i, (k, _) in enumerate(sorted_emotions) if k == target_emotion),
-                None
-            )
-
-            if target_rank is not None:
-                target_score = emotions[target_emotion]
-                raw_weighted = target_score / (target_rank + 1)
-                # Normalize: ratio of target's rank-weighted score to the total
-                hume_raw_scores[name] = raw_weighted / (total_rank_weighted + 1e-8)
-            else:
-                # Target emotion not detected at all
-                hume_raw_scores[name] = 0.0
-
-        hume_series = pd.Series(hume_raw_scores)
-        hume_z = (hume_series - hume_series.mean()) / (hume_series.std() + 1e-8)
-    else:
-        hume_z = pd.Series({name: 0.0 for name in model_list})
-    sub_scores["hume"] = hume_z
-
     # ── Weighted combination ─────────────────────────────────────────────────
-    # Normalize weights in case arousal/hume are disabled.
+    # Normalize weights in case arousal is disabled.
     w_acoustic = ACOUSTIC_WEIGHT
     w_arousal  = AROUSAL_WEIGHT  if use_arousal else 0.0
     w_valence  = VALENCE_WEIGHT  if use_arousal else 0.0
-    w_hume     = HUME_WEIGHT     if use_hume    else 0.0
 
-    total_w = w_acoustic + w_arousal + w_valence + w_hume
+    total_w = w_acoustic + w_arousal + w_valence
     if total_w == 0:
         total_w = 1.0  # guard against division by zero
 
@@ -560,7 +406,6 @@ def compute_composite_score(
         w_acoustic / total_w * acoustic_score
         + w_arousal  / total_w * arousal_z
         + w_valence  / total_w * valence_z
-        + w_hume     / total_w * hume_z
     )
 
     return composite.sort_values(ascending=False), sub_scores
@@ -595,13 +440,12 @@ with st.sidebar:
         "What emotion should the TTS convey?",
         options=AVAILABLE_EMOTIONS,
         index=0,
-        help="This affects valence scoring (which direction = better) and Hume scoring (which emotion to reward)."
+        help="This affects valence scoring (which direction = better)."
     )
     emotion_cfg = EMOTION_CONFIG[selected_emotion]
     valence_dir_label = "← negative (low valence)" if emotion_cfg["valence_direction"] == "negative" else "→ positive (high valence)"
     st.markdown(f'<div class="emotion-box"><strong>{selected_emotion}</strong><br>'
                 f'Valence target: {valence_dir_label}<br>'
-                f'Hume looks for: <code>{emotion_cfg["hume_emotion"]}</code><br>'
                 f'<span style="font-size:0.78rem">{emotion_cfg["description"]}</span></div>',
                 unsafe_allow_html=True)
 
@@ -630,16 +474,13 @@ with st.sidebar:
 
     use_arousal = st.toggle("🧠 Include Arousal/Valence Model", value=True,
                             help="Adds audeering wav2vec2 arousal/valence. Slower but richer.")
-    use_hume = st.toggle("🦨 Include Hume Analysis", value=True,
-                         help="Runs Hume prosody API. Requires API key. Adds ~30s per model.")
 
     st.markdown("---")
     st.markdown("### Score Weights")
     actual_w_acoustic = ACOUSTIC_WEIGHT
     actual_w_arousal  = AROUSAL_WEIGHT if use_arousal else 0.0
     actual_w_valence  = VALENCE_WEIGHT if use_arousal else 0.0
-    actual_w_hume     = HUME_WEIGHT    if use_hume    else 0.0
-    total_w_display   = actual_w_acoustic + actual_w_arousal + actual_w_valence + actual_w_hume or 1.0
+    total_w_display   = actual_w_acoustic + actual_w_arousal + actual_w_valence or 1.0
 
     def pct(w): return f"{w / total_w_display * 100:.0f}%"
 
@@ -649,13 +490,12 @@ with st.sidebar:
     | Acoustic  | {pct(actual_w_acoustic)} |
     | Arousal   | {pct(actual_w_arousal)} |
     | Valence   | {pct(actual_w_valence)} |
-    | Hume      | {pct(actual_w_hume)} |
     """)
 
     analyze = st.button("▶ Run Analysis", use_container_width=True)
 
     st.markdown("---")
-    st.markdown('<div class="info-box" style="font-size:0.75rem">Acoustic: <strong>eGeMAPS v02</strong> via OpenSmile<br>Emotion dims: <strong>audeering/wav2vec2-large-robust</strong><br>Emotion detection: <strong>Hume AI Prosody</strong></div>', unsafe_allow_html=True)
+    st.markdown('<div class="info-box" style="font-size:0.75rem">Acoustic: <strong>eGeMAPS v02</strong> via OpenSmile<br>Emotion dims: <strong>audeering/wav2vec2-large-robust</strong></div>', unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -679,14 +519,14 @@ for uploaded_file in uploaded_files:
                 <h4>What this measures</h4>
                 <div style="font-size:0.85rem;color:#a0a0cc;margin-top:0.5rem">
                 Pitch range & variability<br>Loudness dynamics<br>Voice quality (shimmer, HNR)<br>
-                Arousal & valence scores<br>Hume emotion detection
+                Arousal & valence scores
                 </div></div>""", unsafe_allow_html=True)
         with col2:
             st.markdown("""<div class="metric-card">
                 <h4>Score breakdown</h4>
                 <div style="font-size:0.85rem;color:#a0a0cc;margin-top:0.5rem">
-                40% Acoustic features<br>30% Arousal (energy/activation)<br>
-                15% Valence (emotion polarity)<br>15% Hume emotion detection
+                50% Acoustic features<br>38% Arousal (energy/activation)<br>
+                12% Valence (emotion polarity)
                 </div></div>""", unsafe_allow_html=True)
         with col3:
             st.markdown("""<div class="metric-card">
@@ -700,7 +540,7 @@ for uploaded_file in uploaded_files:
         st.stop()
 
 if len(ready_files) < 2:
-    st.warning("Please upload at least 2 audio files to compare.")
+    st.warning("Please upload at least 2 audio files to compare. Sample files can be found in /resources.")
     st.stop()
 
 # ── Run analysis ───────────────────────────────────────────────────────────────
@@ -731,20 +571,10 @@ for idx, (name, file) in enumerate(ready_files):
 progress.progress(1.0, text="Acoustic features done!")
 progress.empty()
 
-# ── Hume analysis (runs during main analysis, not lazily in tab) ───────────────
-hume_raw = {}
-hume_means = {}
-hume_predictions = {}
-
-if use_hume:
-    with st.status("Running Hume AI analysis…", expanded=False) as hume_status:
-        hume_raw, hume_means, hume_predictions = run_hume_analysis(ready_files, results)
-        hume_status.update(label="Hume analysis complete!", state="complete")
-
-    model_list = list(results.keys())
-    # Use custom colors from session state if available, otherwise use default ACCENT_COLORS
-    colors = {name: st.session_state.custom_colors.get(name, ACCENT_COLORS[i % len(ACCENT_COLORS)])
-              for i, name in enumerate(model_list)}
+model_list = list(results.keys())
+# Use custom colors from session state if available, otherwise use default ACCENT_COLORS
+colors = {name: st.session_state.custom_colors.get(name, ACCENT_COLORS[i % len(ACCENT_COLORS)])
+          for i, name in enumerate(model_list)}
 
 # ── eGeMAPS matrix ─────────────────────────────────────────────────────────────
 comp_matrix = {name: results[name]["components"] for name in model_list}
@@ -755,10 +585,8 @@ composite, sub_scores = compute_composite_score(
     model_list=model_list,
     df_comp=df_comp,
     results=results,
-    hume_means=hume_means,
     emotion_config=emotion_cfg,
     use_arousal=use_arousal,
-    use_hume=use_hume,
 )
 
 winner = composite.index[0]
@@ -772,7 +600,7 @@ df_zscored = (df_norm - df_norm.mean()) / (df_norm.std() + 1e-8)
 # ══════════════════════════════════════════════════════════════════════════════
 # RESULTS TABS
 # ══════════════════════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏆 Rankings", "📊 Acoustic Features", "🧠 Arousal & Emotion", "🦨 Hume Emotion", "🔬 Raw Data"])
+tab1, tab2, tab3, tab5 = st.tabs(["🏆 Rankings", "📊 Acoustic Features", "🧠 Arousal & Emotion", "🔬 Raw Data"])
 
 
 # ── TAB 1: Rankings ────────────────────────────────────────────────────────────
@@ -782,8 +610,6 @@ with tab1:
     enabled_parts = ["acoustic"]
     if use_arousal:
         enabled_parts += ["arousal", "valence"]
-    if use_hume:
-        enabled_parts += ["hume"]
     st.markdown(f"*Composite: {' + '.join(enabled_parts)}*")
 
     col_rank, col_radar = st.columns([1, 1.4])
@@ -837,13 +663,11 @@ with tab1:
         "acoustic": f"Acoustic Features ({pct(actual_w_acoustic)})",
         "arousal":  f"Arousal ({pct(actual_w_arousal)})",
         "valence":  f"Valence — {emotion_cfg['valence_direction']} target ({pct(actual_w_valence)})",
-        "hume":     f"Hume '{emotion_cfg['hume_emotion']}' detection ({pct(actual_w_hume)})",
     }
     score_colors = {
         "acoustic": "#cc44ff",
         "arousal":  "#33aaff",
         "valence":  "#ff6644",
-        "hume":     "#44ffcc",
     }
 
     fig_breakdown = go.Figure()
@@ -1003,79 +827,6 @@ with tab3:
         st.markdown('<div class="info-box">Valence score for this session is direction-aware: the composite rewards models whose valence is on the correct side for the target emotion.</div>', unsafe_allow_html=True)
 
 
-# ── TAB 4: Hume ───────────────────────────────────────────────────────────────
-with tab4:
-    if not use_hume:
-        st.info("Enable the Hume Analysis toggle in the sidebar to see this section.")
-    elif not hume_predictions:
-        st.warning("Hume analysis produced no results. Check your API key and audio files.")
-    else:
-        st.markdown(f"### Hume Prosody Analysis — Target: *{selected_emotion}*")
-        st.markdown("Prosody-based emotion analysis from Hume AI — no text used.")
-
-        target_emo = emotion_cfg["hume_emotion"]
-
-        # Summary comparison across models
-        st.markdown("#### Target Emotion Score Comparison")
-        target_scores = {name: hume_means.get(name, {}).get(target_emo, 0.0) for name in model_list}
-        fig_target = go.Figure(go.Bar(
-            x=list(target_scores.keys()),
-            y=list(target_scores.values()),
-            marker_color=[colors[n] for n in target_scores.keys()],
-            opacity=0.85,
-            text=[f"{v:.2%}" for v in target_scores.values()],
-            textposition="outside",
-        ))
-        fig_target.update_layout(
-            **PLOTLY_THEME, height=300,
-            margin=dict(l=20, r=20, t=20, b=20),
-            yaxis_title=f"Mean '{target_emo}' score",
-        )
-        st.plotly_chart(fig_target, use_container_width=True)
-
-        st.markdown("---")
-
-        # Per-model detail
-        for name in model_list:
-            if name not in hume_predictions or not hume_means.get(name):
-                continue
-
-            st.subheader(f"🎙️ {name}")
-            emotions = hume_means[name]
-            global_sorted = sorted(emotions.items(), key=lambda x: x[1], reverse=True)
-
-            # Find rank of target emotion
-            target_rank = next((i for i, (k, _) in enumerate(global_sorted) if k == target_emo), -1)
-            rank_label = f"#{target_rank + 1}" if target_rank >= 0 else "Not detected"
-
-            m1, m2, m3 = st.columns(3)
-            m1.metric(label=f"'{target_emo}' score", value=f"{emotions.get(target_emo, 0):.2%}")
-            m2.metric(label=f"'{target_emo}' rank", value=rank_label)
-            m3.metric(label="Top emotion", value=global_sorted[0][0] if global_sorted else "—",
-                      delta=f"{global_sorted[0][1]:.2%}" if global_sorted else None)
-
-            top10 = global_sorted[:10]
-            emo_names = [e[0] for e in top10]
-            emo_vals  = [e[1] for e in top10]
-            bar_colors = ["#ff6644" if e == target_emo else colors.get(name, "#cc44ff") for e in emo_names]
-
-            fig_hume = go.Figure(go.Bar(
-                x=emo_names,
-                y=emo_vals,
-                marker_color=bar_colors,
-                opacity=0.85,
-                text=[f"{v:.2%}" for v in emo_vals],
-                textposition="outside",
-            ))
-            fig_hume.update_layout(
-                **PLOTLY_THEME, height=300,
-                margin=dict(l=20, r=20, t=20, b=60),
-                xaxis_tickangle=-30,
-            )
-            st.plotly_chart(fig_hume, use_container_width=True)
-            st.markdown("---")
-
-
 # ── TAB 5: Raw Data ────────────────────────────────────────────────────────────
 with tab5:
     st.markdown("### Raw eGeMAPS Features")
@@ -1096,14 +847,6 @@ with tab5:
             ar = results[name]["arousal"] or {}
             avd_rows.append({"Model": name, **ar})
         st.dataframe(pd.DataFrame(avd_rows).set_index("Model"), use_container_width=True)
-
-    if use_hume and hume_means:
-        st.markdown("### Hume Mean Emotion Scores")
-        hume_df = pd.DataFrame(hume_means).T
-        hume_df.index.name = "Model"
-        st.dataframe(hume_df.style.format("{:.4f}"), use_container_width=True, height=400)
-        hume_csv = hume_df.to_csv()
-        st.download_button("📥 Download Hume Scores (CSV)", hume_csv, "tts_hume_scores.csv", "text/csv")
 
     st.markdown("### Composite Score Sub-Scores")
     sub_df = pd.DataFrame({k: v for k, v in sub_scores.items()})
