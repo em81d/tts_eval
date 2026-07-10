@@ -29,6 +29,8 @@ pandas
 plotly
 
 # ── Hume AI (TTS generation + expression measurement) ────────────────────────
+# as Hume's Expression Measurement API is no longer functional, the functionality 
+#has been removed so that this project can still be demo'd
 hume
 
 # ── Neuphonic TTS ─────────────────────────────────────────────────────────────
